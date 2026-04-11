@@ -92,7 +92,7 @@ down = core.std.ShufflePlanes([gray,UV],[0,1,2], vs.YUV)
 ```
 正常缩放UV，跟处理后的Y平面混合。
 
-实际上709的transfer压缩是在RGB下做的，受到YCbCr矩阵影响，chroma上其实还是有部分Luma信息 ，只用Y'做转换不太准确。你可以看到UV计算，是基于transfer压缩后的RGB。如果RGB本身是未压缩的线性光，UV的值会有改变；虽然YUV的机制保证了它改变的不大。理想的YUV机制，应该完全消除掉亮度在UV平面的影响，也就是对亮度进行统一的变换。UV的值不应该改变（注意它是亮度做差）。这是理想中情况，现实中很难做到。
+根据 Rec.709 的标准，图像是先在 RGB 下进行 transfer 压缩，然后再通过 matrix 转为 YCbCr 形式。需要注意，由于 matrix 参数设置的原因，YCbCr 里的 Y 与实际物理学中的亮度（luminance）是存在差异的，换句话说有部分亮度信息落在了 CbCr 里。只对 Y' 做转换，对于亮度的调整不完全准确，CbCr 里的亮度信息也会存在影响。另一方面，transfer 是一个非线性函数，而 Y' 是 R'G'B' 的线性组合，对线性组合使用非线性函数与先分别进行非线性函数再线性组合，在数学上也存在一定的计算误差。因此这里只处理 Y' 其实是针对降采样情况下的特殊近似操作。
 
 ### Chroma subsample 与 Chroma placement
     
