@@ -27,7 +27,7 @@ to +0.5: All the pixels of the plane will be set to −x (the opposite of the sp
 >+ 2:	The plane of the input clip will be copied and possibly cropped. Areas out of the input picture are left unprocessed (garbage). Range (full or TV) conversions are ignored.
 >+ 3:	The plane will be processed (default).
 
-所以，假如你发现一个视频有 chroma shift，又不想把平面都拆出来，处理完再拼回去，那么你可以用`fmtc.resample(sx=0.3, plane=[2,3,3])`来仅仅处理色度平面。
+所以，假如你发现一个视频有 chroma shift，又不想把平面都拆出来，处理完再拼回去，那么你可以用`fmtc.resample(sx=0.3, planes=[2,3,3])`来仅仅处理色度平面。
 
 ### Matrix转换
 
@@ -42,13 +42,13 @@ to +0.5: All the pixels of the plane will be set to −x (the opposite of the sp
     
 ### Gamma awara-resize
     
-下图是一些 Transer的曲线，这里我们从图上直观地理解一下：横轴代表计算机里储存的数，纵轴代表实际的显示亮度，可以很明显地发现：
+下图是一些 Transfer 的曲线，这里我们从图上直观地理解一下：横轴代表计算机里储存的数，纵轴代表实际的显示亮度，可以很明显地发现：
 + 这些曲线都不是线性的（废话）。
 + 他们都是下凹的，也就是说暗场给了更多的数字来表示。
 
 ![Figure 2](./Figure/Figure%202.jpeg)
 
-那么我们想象一下，假如说我们在用双线性算法缩小图像的时候，在 `full range 8bit`下，有两个像素：0和255，那么在他们中点插值的像素值将会是128，我们姑且认为我们将这两个像素合并成了一个，那么按理说，视觉上应该是得到中性灰。但是由于 transfer 曲线将0-255中更多的数字给了暗场，所以得到的 128 会比中性灰更暗。其他的 kernel 大同小异。这么做的后果是图像的对比度会下降，比如这张图：
+那么我们想象一下，假如说我们在用双线性算法缩小图像的时候，在 `full range 8bit` 下，有两个像素：0和255，那么在他们中点插值的像素值将会是128，我们姑且认为我们将这两个像素合并成了一个，那么按理说，视觉上应该是得到中性灰。但是由于 transfer 曲线将0-255中更多的数字给了暗场，所以得到的 128 会比中性灰更暗。其他的 kernel 大同小异。这么做的后果是图像的对比度会下降，比如这张图：
 
 ![Figure 3](./Figure/Figure%203.png)
 
@@ -56,9 +56,9 @@ to +0.5: All the pixels of the plane will be set to −x (the opposite of the sp
 
 ![Figure 4](./Figure/Figure%204.png)
 
-可以明显感觉灯光的对比度低了。诚然，resizer自带的low-pass效应是一点，tranfer压缩是另一点。
+可以明显感觉灯光的对比度低了。诚然，resizer 自带的 low-pass 效应是一点，transfer 压缩是另一点。
 
-那么怎么办呢？我们可以将图像转到线性光下，再做resize，然后转回transfer压缩的效果。还是那张图，如果在线性光下做：
+那么怎么办呢？我们可以将图像转到线性光下，再做 resize，然后转回 transfer 压缩的效果。还是那张图，如果在线性光下做：
 
 ![Figure 5](./Figure/Figure%205.png)
 
@@ -67,9 +67,9 @@ vs中，可以这样写：
 ```python
 gray = core.std.ShufflePlanes(src16, 0, colorfamily=vs.GRAY)
 gray = gray.fmtc.transfer(transs="709", transd="linear", fulls=False, fulld=False)
-gray = gray.fmtc.resample(1280,720)
+gray = gray.fmtc.resample(src16.width//4, src16.height//4)
 gray = gray.fmtc.transfer(transs="linear", transd="709",fulls=False, fulld=False)
-UV = src16.fmtc.resample(1280,720)
+UV = src16.fmtc.resample(src16.width//4, src16.height//4)
 down = core.std.ShufflePlanes([gray,UV],[0,1,2], vs.YUV)
 ```
 
@@ -81,18 +81,18 @@ gray = gray.fmtc.transfer(transs="709", transd="linear", fulls=False, fulld=Fals
 这是把源的Y平面拿出来，再丢给fmtc.transfer，从709的transfer压缩，转为线性光。
 
 ```python
-gray = gray.fmtc.resample(1280,720)
+gray = gray.fmtc.resample(src16.width//4, src16.height//4)
 gray = gray.fmtc.transfer(transs="linear", transd="709",fulls=False, fulld=False)
 ```
-
 在线性光下做好缩放后，再转回带transfer压缩的效果。
+
 ```python
-UV = src16.fmtc.resample(1280,720)
+UV = src16.fmtc.resample(src16.width//4, src16.height//4)
 down = core.std.ShufflePlanes([gray,UV],[0,1,2], vs.YUV)
 ```
 正常缩放UV，跟处理后的Y平面混合。
 
-实际上709的tansfer压缩是在RGB下做的，受到YCbCr矩阵影响，chroma上其实还是有部分Luma信息 ，只用Y'做转换不太准确。你可以看到UV计算，是基于transfer压缩后的RGB。如果RGB本身是未压缩的线性光，UV的值会有改变；虽然YUV的机制保证了它改变的不大。理想的YUV机制，应该完全消除掉亮度在UV平面的影响，也就是对亮度进行统一的变换。UV的值不应该改变（注意它是亮度做差）。这是理想中情况，现实中很难做到。
+实际上709的transfer压缩是在RGB下做的，受到YCbCr矩阵影响，chroma上其实还是有部分Luma信息 ，只用Y'做转换不太准确。你可以看到UV计算，是基于transfer压缩后的RGB。如果RGB本身是未压缩的线性光，UV的值会有改变；虽然YUV的机制保证了它改变的不大。理想的YUV机制，应该完全消除掉亮度在UV平面的影响，也就是对亮度进行统一的变换。UV的值不应该改变（注意它是亮度做差）。这是理想中情况，现实中很难做到。
 
 ### Chroma subsample 与 Chroma placement
     
@@ -221,7 +221,7 @@ $$
 
 同理，那么`mode`为4，2就会变成5。然后不难证明，假如`mode`是4，中间那个像素永远会变成中央加周边总共9个像素的中位数。从刚才这个流程里我们可以看到，随着`mode`从1到4，原来在9个像素里面比较小的2逐渐变大了，也就是说模糊的效果逐渐加强了。
 
-然后，`RemoveGran`的`mode`参数是可以接受数组的，最多不超过`src`的平面数目，假如不足`src`的平面数目的话，那么滤镜会自动把`mode`扩展成一个长度为3的数组。例如`src`有三个平面，`mode`是1，那么滤镜会自动把`mode`扩展成一个长度为3的数组`[1,1,1]`，假如`mode`是`[20, 1]`那么滤镜会会把它变成`[20,1,1]`，总而言之就是重复的是数组最后一个数。这三个数对应着`RemoveGrain`会用什么样的`mode`去对`src`的三个平面做模糊。例如`[20, 1, 1]`，就意味着对Y平面用20，对UV平面用1。
+然后，`RemoveGrain`的`mode`参数是可以接受数组的，最多不超过`src`的平面数目，假如不足`src`的平面数目的话，那么滤镜会自动把`mode`扩展成一个长度为3的数组。例如`src`有三个平面，`mode`是1，那么滤镜会自动把`mode`扩展成一个长度为3的数组`[1,1,1]`，假如`mode`是`[20, 1]`那么滤镜会会把它变成`[20,1,1]`，总而言之就是重复的是数组最后一个数。这三个数对应着`RemoveGrain`会用什么样的`mode`去对`src`的三个平面做模糊。例如`[20, 1, 1]`，就意味着对Y平面用20，对UV平面用1。
 
 #### 中值模糊 vs 中位数模糊
 
